@@ -1,194 +1,196 @@
+import json
+
 from django.views import View
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from .models import Category, Tag, Quote
+from .forms import (
+    QuoteCreateForm, QuoteUpdateForm,
+    CategoryCreateForm, CategoryUpdateForm,
+    TagCreateForm, TagUpdateForm,
+    QuoteTagsAddForm,
+)
+
+
+def parse_body(request):
+    if request.content_type == 'application/json':
+        try:
+            return json.loads(request.body)
+        except json.JSONDecodeError:
+            return {}
+    return request.POST
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class CsrfExemptView(View):
+    pass
 
 
 class QuoteDetailView(View):
     def get(self, request, pk):
         quote = get_object_or_404(Quote, pk=pk)
-        obj = {
+        return JsonResponse({
             'id': quote.id,
             'text': quote.text,
             'category_id': quote.category_id,
             'tags': list(quote.tags.values('id', 'name')),
-        }
-        return JsonResponse(obj)
+        })
 
 
 class QuoteRandomView(View):
     def get(self, request):
         quote = Quote.objects.order_by('?').first()
-        obj = {
+        return JsonResponse({
             'id': quote.id,
             'text': quote.text,
             'category_id': quote.category_id,
             'tags': list(quote.tags.values('id', 'name')),
-        }
-        return JsonResponse(obj)
+        })
 
 
-class QuoteCreateView(View):
+class QuoteCreateView(CsrfExemptView):
     def post(self, request):
-        text = request.POST.get('text')
-        category_id = request.POST.get('category_id')
-        quote = Quote.objects.create(text=text, category_id=category_id)
-        obj = {
+        form = QuoteCreateForm(parse_body(request))
+        if not form.is_valid():
+            return JsonResponse(form.errors, status=400)
+        quote = form.save()
+        
+        return JsonResponse({
             'id': quote.id,
             'text': quote.text,
             'category_id': quote.category_id,
-        }
-        return JsonResponse(obj)
+        })
 
 
-class QuoteUpdateView(View):
+class QuoteUpdateView(CsrfExemptView):
     def post(self, request, pk):
         quote = get_object_or_404(Quote, pk=pk)
-        quote.text = request.POST.get('text')
-        quote.category_id = request.POST.get('category_id')
-        quote.save()
-        obj = {
+        form = QuoteUpdateForm(parse_body(request), instance=quote)
+        if not form.is_valid():
+            return JsonResponse(form.errors, status=400)
+        quote = form.save()
+        return JsonResponse({
             'id': quote.id,
             'text': quote.text,
             'category_id': quote.category_id,
-        }
-        return JsonResponse(obj)
+        })
 
 
-class QuoteDeleteView(View):
+class QuoteDeleteView(CsrfExemptView):
     def post(self, request, pk):
         quote = get_object_or_404(Quote, pk=pk)
         quote.delete()
-        obj = {'result': 'deleted'}
-        return JsonResponse(obj)
+        return JsonResponse({'result': 'deleted'})
 
 
 class CategoryQuotesView(View):
     def get(self, request, pk):
         category = get_object_or_404(Category, pk=pk)
-        data = []
-        for quote in category.quotes.all():
-            data.append({
-                'id': quote.id,
-                'text': quote.text,
-                'category_id': quote.category_id,
-            })
-        obj = {
-            'data': data
-        }
-        return JsonResponse(obj)
+        data = [{
+            'id': q.id,
+            'text': q.text,
+            'category_id': q.category_id,
+        } for q in category.quotes.all()]
+        return JsonResponse({'data': data})
 
 
-class CategoryCreateView(View):
+
+class CategoryCreateView(CsrfExemptView):
     def post(self, request):
-        category = Category.objects.create(name=request.POST.get('name'))
-        obj = {
-            'id': category.id,
-            'name': category.name,
-        }
-        return JsonResponse(obj)
+        form = CategoryCreateForm(parse_body(request))
+        if not form.is_valid():
+            return JsonResponse(form.errors, status=400)
+        category = form.save()
+        return JsonResponse({'id': category.id, 'name': category.name})
 
 
-class CategoryUpdateView(View):
+class CategoryUpdateView(CsrfExemptView):
     def post(self, request, pk):
         category = get_object_or_404(Category, pk=pk)
-        category.name = request.POST.get('name')
-        category.save()
-        obj = {
-            'id': category.id,
-            'name': category.name,
-        }
-        return JsonResponse(obj)
+        form = CategoryUpdateForm(parse_body(request), instance=category)
+        if not form.is_valid():
+            return JsonResponse(form.errors, status=400)
+        category = form.save()
+        return JsonResponse({'id': category.id, 'name': category.name})
 
 
-class CategoryDeleteView(View):
+class CategoryDeleteView(CsrfExemptView):
     def post(self, request, pk):
         category = get_object_or_404(Category, pk=pk)
         category.delete()
-        obj = {'result': 'deleted'}
-        return JsonResponse(obj)
+        return JsonResponse({'result': 'deleted'})
+
+
 
 
 class TagQuotesView(View):
     def get(self, request, pk):
         tag = get_object_or_404(Tag, pk=pk)
-        data = []
-        for quote in tag.quotes.all():
-            data.append({
-                'id': quote.id,
-                'text': quote.text,
-                'category_id': quote.category_id,
-            })
-        obj = {
-            'data': data
-        }
-        return JsonResponse(obj)
+        data = [{
+            'id': q.id,
+            'text': q.text,
+            'category_id': q.category_id,
+        } for q in tag.quotes.all()]
+        return JsonResponse({'data': data})
 
 
-class TagCreateView(View):
+class TagCreateView(CsrfExemptView):
     def post(self, request):
-        tag = Tag.objects.create(name=request.POST.get('name'))
-        obj = {
-            'id': tag.id,
-            'name': tag.name,
-        }
-        return JsonResponse(obj)
+        form = TagCreateForm(parse_body(request))
+        if not form.is_valid():
+            return JsonResponse(form.errors, status=400)
+        tag = form.save()
+        return JsonResponse({'id': tag.id, 'name': tag.name})
 
 
-class TagUpdateView(View):
+class TagUpdateView(CsrfExemptView):
     def post(self, request, pk):
         tag = get_object_or_404(Tag, pk=pk)
-        tag.name = request.POST.get('name')
-        tag.save()
-        obj = {
-            'id': tag.id,
-            'name': tag.name,
-        }
-        return JsonResponse(obj)
+        form = TagUpdateForm(parse_body(request), instance=tag)
+        if not form.is_valid():
+            return JsonResponse(form.errors, status=400)
+        tag = form.save()
+        return JsonResponse({'id': tag.id, 'name': tag.name})
 
 
-class TagDeleteView(View):
+class TagDeleteView(CsrfExemptView):
     def post(self, request, pk):
         tag = get_object_or_404(Tag, pk=pk)
         tag.delete()
-        obj = {'result': 'deleted'}
-        return JsonResponse(obj)
+        return JsonResponse({'result': 'deleted'})
+
+
 
 
 class QuoteTagsView(View):
     def get(self, request, pk):
         quote = get_object_or_404(Quote, pk=pk)
-        obj = {
-            'tags': list(quote.tags.values('id', 'name'))
-        }
-        return JsonResponse(obj)
+        return JsonResponse({'tags': list(quote.tags.values('id', 'name'))})
 
 
-class QuoteTagsSetView(View):
+class QuoteTagsSetView(CsrfExemptView):
     def post(self, request, pk):
         quote = get_object_or_404(Quote, pk=pk)
         quote.tags.clear()
-        obj = {
-            'tags': list(quote.tags.values('id', 'name'))
-        }
-        return JsonResponse(obj)
+        return JsonResponse({'tags': list(quote.tags.values('id', 'name'))})
 
 
-class QuoteTagsAddView(View):
+class QuoteTagsAddView(CsrfExemptView):
     def post(self, request, pk):
         quote = get_object_or_404(Quote, pk=pk)
-        tag = get_object_or_404(Tag, pk=request.POST.get('tag_id'))
+        form = QuoteTagsAddForm(parse_body(request))
+        if not form.is_valid():
+            return JsonResponse(form.errors, status=400)
+        tag = get_object_or_404(Tag, pk=form.cleaned_data['tag_id'])
         quote.tags.add(tag)
-        obj = {
-            'tags': list(quote.tags.values('id', 'name'))
-        }
-        return JsonResponse(obj)
+        return JsonResponse({'tags': list(quote.tags.values('id', 'name'))})
 
 
-class QuoteTagsRemoveView(View):
+class QuoteTagsRemoveView(CsrfExemptView):
     def post(self, request, pk, tag_id):
         quote = get_object_or_404(Quote, pk=pk)
         tag = get_object_or_404(Tag, pk=tag_id)
         quote.tags.remove(tag)
-        obj = {'result': 'deleted'}
-        return JsonResponse(obj)
+        return JsonResponse({'result': 'deleted'})
